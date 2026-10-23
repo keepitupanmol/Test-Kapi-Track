@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<!-- KapiTrack TEST page (for GitHub Pages). Does what the real landing page does: page open -> /api/track, JOIN tap -> /api/join.
+     Change ONLY the BACKUP_LINK line below. Open it as:  https://YOURNAME.github.io/kapitrack-test/?c=zztest&fbclid=TESTfbclid123&ad_id=111&ad_name=testad&placement=Instagram_Reels -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join our channel</title>
+<style>
+  body{font-family:Arial,sans-serif;background:#0b1f4a;color:#fff;margin:0;padding:24px;text-align:center}
+  h1{font-size:26px;margin:30px 0 8px}
+  p{opacity:.85}
+  button{background:#19c37d;color:#fff;border:0;border-radius:14px;padding:18px 34px;font-size:22px;margin:24px 0;cursor:pointer}
+  #info{font-size:13px;text-align:left;max-width:520px;margin:20px auto;background:#13306b;border-radius:10px;padding:12px;word-break:break-all}
+</style>
+</head>
+<body>
+<h1>Join our free Telegram channel</h1>
+<p>Test page</p>
+<button id="join">Join on Telegram</button>
+<div id="info">Starting...</div>
+<script>
+const API = "https://app.kapitrack.site";
+const BACKUP_LINK = "PASTE_YOUR_PERMANENT_TELEGRAM_LINK_HERE";   // untracked fallback (your own permanent admin link)
+const AD_PARAMS = ["fbclid", "utm_source", "ad_id", "ad_name", "placement"];
+const state = { slug: "", vid: null, timeoutMs: 5000, fbp: null, joining: false };
+const info = (t) => { document.getElementById("info").textContent = t; };
+
+function getSlug() {
+  const u = new URL(window.location.href);
+  let s = (u.searchParams.get("c") || "").toLowerCase();
+  if (!s) { const seg = u.pathname.split("/").filter(Boolean); s = ((seg[0] === "j" ? seg[1] : "") || "").toLowerCase(); }
+  return /^[a-z0-9_-]{1,32}$/.test(s) ? s : "";
+}
+function readCookie(name) { const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)")); return m ? decodeURIComponent(m[1]) : null; }
+function adParams() { const q = new URLSearchParams(window.location.search), o = {}; for (const k of AD_PARAMS) { const v = q.get(k); if (v) o[k] = v.slice(0, 200); } return o; }
+function firstSeenAgoMs(slug, fbclid) {
+  try { const key = "kt_seen_" + slug + "_" + fbclid, now = Date.now(), prev = Number(localStorage.getItem(key)); if (prev > 0) return Math.max(0, now - prev); localStorage.setItem(key, String(now)); } catch (e) {}
+  return 0;
+}
+const pageUrl = () => window.location.href.split("#")[0];
+
+function loadPixel(pixelId) {
+  if (!window.fbq) {
+    (function (f, b, e, v, n, t, s) {
+      if (f.fbq) return;
+      n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+      if (!f._fbq) f._fbq = n;
+      n.push = n; n.loaded = true; n.version = "2.0"; n.queue = [];
+      t = b.createElement(e); t.async = true; t.src = v;
+      s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s);
+    })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+  }
+  window.fbq("init", pixelId);
+  window.fbq("track", "PageView");
+  let tries = 0;
+  const t = setInterval(() => { const v = readCookie("_fbp"); if (v) { state.fbp = v; clearInterval(t); } else if (++tries > 15) clearInterval(t); }, 200);
+}
+
+async function post(path, body, timeoutMs) {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal });
+    return { ok: r.ok, status: r.status, json: await r.json().catch(() => null) };
+  } catch (e) { return { ok: false, status: 0, json: null }; }
+  finally { clearTimeout(timer); }
+}
+
+async function initPage() {
+  state.slug = getSlug();
+  if (!state.slug) { info("No ?c=zztest in the address. JOIN will go to the backup link."); return; }
+  const p = adParams();
+  const res = await post("/api/track", { slug: state.slug, ...p, event_source_url: pageUrl(), seen_ago_ms: p.fbclid ? firstSeenAgoMs(state.slug, p.fbclid) : 0, fbp: readCookie("_fbp") || undefined }, 4000);
+  if (res.ok && res.json && res.json.ok) {
+    state.vid = res.json.vid || null;
+    state.timeoutMs = (res.json.join_timeout_s || 5) * 1000;
+    if (res.json.pixel_id) loadPixel(res.json.pixel_id);
+    info("Page registered. visitor " + state.vid + " | pixel " + res.json.pixel_id + " | fbclid " + (p.fbclid || "(none)"));
+  } else info("track FAILED (http " + res.status + "). Check allowed_origins in the sheet. JOIN will use the backup link.");
+}
+
+async function openTelegram() {
+  if (state.joining) return;
+  state.joining = true;
+  const p = adParams();
+  const res = await post("/api/join", { slug: state.slug, vid: state.vid || undefined, ...p, event_source_url: pageUrl(), seen_ago_ms: p.fbclid ? firstSeenAgoMs(state.slug, p.fbclid) : 0, fbp: state.fbp || readCookie("_fbp") || undefined }, state.timeoutMs);
+  const link = res.ok && res.json && res.json.ok && res.json.link ? res.json.link : null;
+  if (link && state.vid) { try { navigator.sendBeacon(API + "/api/event", new Blob([JSON.stringify({ vid: state.vid, e: "tg_open" })], { type: "text/plain" })); } catch (e) {} }
+  const target = link || BACKUP_LINK;
+  info((res.json && res.json.tracked ? "TRACKED link: " : "BACKUP link (not tracked): ") + target + (res.ok ? "" : " | join call failed, http " + res.status));
+  if (new URL(window.location.href).searchParams.get("nodirect")) { state.joining = false; return; }   // ?nodirect=1 = only show the link
+  setTimeout(() => window.location.assign(target), 1200);
+}
+document.getElementById("join").addEventListener("click", openTelegram);
+initPage();
+</script>
+</body>
+</html>
