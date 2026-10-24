@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- KapiTrack TEST page (for GitHub Pages). Does what the real landing page does: page open -> /api/track, JOIN tap -> /api/join.
-     Change ONLY the BACKUP_LINK line below. Open it as:  https://YOURNAME.github.io/kapitrack-test/?c=zztest&fbclid=TESTfbclid123&ad_id=111&ad_name=testad&placement=Instagram_Reels -->
+     Change ONLY the BACKUP_LINK and CLIENT_ID lines below. Open it as:  https://YOURNAME.github.io/kapitrack-test/?fbclid=TESTfbclid123&ad_id=111&ad_name=testad&placement=Instagram_Reels -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -22,6 +22,7 @@
 <script>
 const API = "https://app.kapitrack.site";
 const BACKUP_LINK = "https://t.me/+_ZEtvBE6SUJkZjFl";   // untracked fallback (your own permanent admin link)
+const CLIENT_ID = "zztest";                                       // the client name, exactly as in the sheet. ?c=other in the address overrides it
 const AD_PARAMS = ["fbclid", "utm_source", "ad_id", "ad_name", "placement"];
 const state = { slug: "", vid: null, timeoutMs: 5000, fbp: null, joining: false };
 const info = (t) => { document.getElementById("info").textContent = t; };
@@ -29,6 +30,7 @@ const info = (t) => { document.getElementById("info").textContent = t; };
 function getSlug() {
   const u = new URL(window.location.href);
   let s = (u.searchParams.get("c") || "").toLowerCase();
+  if (!s && /^[a-z0-9_-]{1,32}$/.test(CLIENT_ID)) return CLIENT_ID;
   if (!s) { const seg = u.pathname.split("/").filter(Boolean); s = ((seg[0] === "j" ? seg[1] : "") || "").toLowerCase(); }
   return /^[a-z0-9_-]{1,32}$/.test(s) ? s : "";
 }
@@ -68,7 +70,7 @@ async function post(path, body, timeoutMs) {
 
 async function initPage() {
   state.slug = getSlug();
-  if (!state.slug) { info("No ?c=zztest in the address. JOIN will go to the backup link."); return; }
+  if (!state.slug) { info("No client name known (CLIENT_ID is empty and the address has no ?c=). JOIN will go to the backup link."); return; }
   const p = adParams();
   const res = await post("/api/track", { slug: state.slug, ...p, event_source_url: pageUrl(), seen_ago_ms: p.fbclid ? firstSeenAgoMs(state.slug, p.fbclid) : 0, fbp: readCookie("_fbp") || undefined }, 4000);
   if (res.ok && res.json && res.json.ok) {
